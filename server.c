@@ -42,17 +42,18 @@ pthread_mutex_t hash_locks[100]; // Array of locks for each key, assuming maximu
 // NOTE: helper funcitons
 
 // function to generate a hash value for the given key using the DJB2 algorithm
-int hash_func(const char *key) {
+int hash_func(const char *key)
+{
     unsigned long hash = 5381;
     int c;
 
-    while ((c = *key++)) {
+    while ((c = *key++))
+    {
         hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
     }
 
     return (int)(hash % 100); // Ensure hash value is within the range of the hash_locks array size and cast to int
 }
-
 
 // function to execute the given thread id and close the thread once it's done
 //[x] complete this function
@@ -83,7 +84,7 @@ void *thread_task(void *arg)
             }
             client_msg[bytes_received] = '\0';
 
-             // Parse client request based on delimiter
+            // Parse client request based on delimiter
             char *operation, *key, *value;
             operation = strtok(client_msg, ".");
             key = strtok(NULL, ".");
@@ -91,43 +92,40 @@ void *thread_task(void *arg)
 
             // Process client request based on operation
             char response[MAX_MSG_SIZE];
-            
+
             switch (operation[0])
             {
-                case 'r':
-                case 'R':
-                  
-                    char *result = g_hash_table_lookup(hash, key);
-              
+            case 'r':
+            case 'R':
 
-                    if (result != NULL)
-                    {
-                        snprintf(response, sizeof(response), "Value for key '%s' is '%s'\n", key, result);
-                    }
-                    else
-                    {
-                        snprintf(response, sizeof(response), "Key '%s' not found\n", key);
-                    }
-                    break;
-                case 'i':
-                case 'I':
-                   
-                    g_hash_table_replace(hash, g_strdup(key), g_strdup(value));
-    
+                char *result = g_hash_table_lookup(hash, key);
 
-                    snprintf(response, sizeof(response), "Value '%s' stored for key '%s'\n", value, key);
-                    break;
-                case 'u':
-                case 'U':
-           
-                    g_hash_table_replace(hash, g_strdup(key), g_strdup(value));
-             
+                if (result != NULL)
+                {
+                    snprintf(response, sizeof(response), "Value for key '%s' is '%s'\n", key, result);
+                }
+                else
+                {
+                    snprintf(response, sizeof(response), "Key '%s' not found\n", key);
+                }
+                break;
+            case 'i':
+            case 'I':
 
-                    snprintf(response, sizeof(response), "Value '%s' updated for key '%s'\n", value, key);
-                    break;
-                default:
-                    snprintf(response, sizeof(response), "Invalid operation\n");
-                    break;
+                g_hash_table_replace(hash, g_strdup(key), g_strdup(value));
+
+                snprintf(response, sizeof(response), "Value '%s' stored for key '%s'\n", value, key);
+                break;
+            case 'u':
+            case 'U':
+
+                g_hash_table_replace(hash, g_strdup(key), g_strdup(value));
+
+                snprintf(response, sizeof(response), "Value '%s' updated for key '%s'\n", value, key);
+                break;
+            default:
+                snprintf(response, sizeof(response), "Invalid operation\n");
+                break;
             }
 
             ssize_t bytes_sent = send(client_sock, response, strlen(response), 0);
@@ -135,8 +133,8 @@ void *thread_task(void *arg)
             {
                 perror("send");
             }
-
         }
+    }
 }
 
 //[x] edit this to match the ack/non-ack message structure
@@ -252,7 +250,7 @@ int main()
         // waiting and accepting connections from the clients
         addr_size = sizeof(SA_IN);
         check(client_sock =
-                  accept(server_sock, (SA *)&client_addr,(socklen_t *)&addr_size),
+                  accept(server_sock, (SA *)&client_addr, (socklen_t *)&addr_size),
               "Accept failed!");
 
         inet_ntop(AF_INET, &client_addr.sin_addr, c_addr, INET_ADDRSTRLEN);
