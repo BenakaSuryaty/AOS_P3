@@ -56,7 +56,6 @@ int hash_func(const char *key)
 }
 
 // function to execute the given thread id and close the thread once it's done
-//[x] complete this function
 void *thread_task(void *arg)
 {
     while (true)
@@ -95,37 +94,40 @@ void *thread_task(void *arg)
 
             switch (operation[0])
             {
-            case 'r':
-            case 'R':
+                case 'r':
+                case 'R':
+                    pthread_mutex_lock(&hash_locks[hash_func(key)]);
+                    char *result = g_hash_table_lookup(hash, key);
+                    pthread_mutex_unlock(&hash_locks[hash_func(key)]);
 
-                char *result = g_hash_table_lookup(hash, key);
+                    if (result != NULL)
+                    {
+                        snprintf(response, sizeof(response), "Value for key '%s' is '%s'\n", key, result);
+                    }
+                    else
+                    {
+                        snprintf(response, sizeof(response), "Key '%s' not found\n", key);
+                    }
+                    break;
+                case 'i':
+                case 'I':
+                    pthread_mutex_lock(&hash_locks[hash_func(key)]);
+                    g_hash_table_replace(hash, g_strdup(key), g_strdup(value));
+                    pthread_mutex_unlock(&hash_locks[hash_func(key)]);
 
-                if (result != NULL)
-                {
-                    snprintf(response, sizeof(response), "Value for key '%s' is '%s'\n", key, result);
-                }
-                else
-                {
-                    snprintf(response, sizeof(response), "Key '%s' not found\n", key);
-                }
-                break;
-            case 'i':
-            case 'I':
+                    snprintf(response, sizeof(response), "Value '%s' stored for key '%s'\n", value, key);
+                    break;
+                case 'u':
+                case 'U':
+                    pthread_mutex_lock(&hash_locks[hash_func(key)]);
+                    g_hash_table_replace(hash, g_strdup(key), g_strdup(value));
+                    pthread_mutex_unlock(&hash_locks[hash_func(key)]);
 
-                g_hash_table_replace(hash, g_strdup(key), g_strdup(value));
-
-                snprintf(response, sizeof(response), "Value '%s' stored for key '%s'\n", value, key);
-                break;
-            case 'u':
-            case 'U':
-
-                g_hash_table_replace(hash, g_strdup(key), g_strdup(value));
-
-                snprintf(response, sizeof(response), "Value '%s' updated for key '%s'\n", value, key);
-                break;
-            default:
-                snprintf(response, sizeof(response), "Invalid operation\n");
-                break;
+                    snprintf(response, sizeof(response), "Value '%s' updated for key '%s'\n", value, key);
+                    break;
+                default:
+                    snprintf(response, sizeof(response), "Invalid operation\n");
+                    break;
             }
 
             ssize_t bytes_sent = send(client_sock, response, strlen(response), 0);
@@ -140,7 +142,7 @@ void *thread_task(void *arg)
     }
 }
 
-//[x] edit this to match the ack/non-ack message structure
+
 // function to perform the handshake protocol
 bool handshake_protocol(int client_sock, char *c_addr)
 {
@@ -198,8 +200,6 @@ int check(int exp, const char *msg)
     return exp;
 }
 
-//[x] Add helper functions for the main logic
-
 int main()
 {
     // thread def
@@ -216,7 +216,7 @@ int main()
     for (int i = 0; i < THREAD_POOL_SIZE; i++)
     {
         if (pthread_create(&th[i], NULL, thread_task, NULL) != 0)
-        { //[x]: fix according to the helper functions.
+        { 
             perror("Failed to create the thread");
         }
     }
@@ -261,15 +261,11 @@ int main()
         int *pclient = malloc(sizeof(int));
         *pclient = client_sock;
 
-        //[x]handling the connected client
         // perform handshake protocol
         bool agree_disagree = handshake_protocol(client_sock, c_addr);
 
         if (agree_disagree)
         {
-            int *pclient = malloc(sizeof(int));
-            *pclient = client_sock;
-
             pthread_mutex_lock(&eventQueue_mutex);
             enqueue(pclient);
             pthread_cond_signal(&eventQueue_cond);
