@@ -30,6 +30,8 @@
 
 #include <ctime>
 #include <fstream>
+#include <iomanip>
+#include <sys/time.h>
 
 using namespace std;
 using namespace std::chrono;
@@ -138,30 +140,27 @@ class ThreadPool
 
 };
 
-
+//functions used
 int hashFunction(const std::string& obj);
 
 string createFile();
 
 void readFile(string fileName);
 
-int client2(int hashNum);
+int clientRead(int hashNum, string fileName);
+
+void converStringToChar(char* timeChar, string timeStr);
+
+string getkeyVal(const std::string& obj);
+
+int clientWrite(int hashVal, string fileName);
 
 int main(){
 
 	//variable for menu selection
 	int selection;
-	cout << "Hello" << endl;
 
 	
-	//creating the threadpool
-	ThreadPool pool{10};
-	
-	pool.enqueue([] {
-		cout << "Hello from thread" << endl;		
-	});
-
-	cout << hashFunction("Hello");
 	
 	while(true){
 
@@ -177,7 +176,35 @@ int main(){
 		//code for menu
 		if(selection == 1)
 		{
-			cout << hashFunction(createFile()) << endl;
+				
+			//getting fileName and value for hash
+			int hashNum;
+			string fileName;
+			
+			cout<< "Enter file you'd like to read: ";
+			cin >> fileName;
+			readFile(fileName);
+
+			//getting the first hashed value
+			hashNum = hashFunction(fileName);
+
+			//attempting to connect with the clients
+			if(clientWrite(hashNum %7, fileName) < 0)
+			{
+				cout << "first server down unreachable, connecting to next" << endl;
+				if(clientWrite((hashNum +2) % 7, fileName) < 0)
+				{
+					cout << "second server unreachable, connecting to next" << endl;
+					
+					if(clientWrite((hashNum +4) % 7, fileName) < 0)
+					{
+						cout << "None of the servers are reachable, aborting write" << endl;
+					}
+				}
+			}
+			
+
+
 
 		}
 		else if (selection ==2)
@@ -194,14 +221,14 @@ int main(){
 			hashNum = hashFunction(fileName);
 
 			//attempting to connect with the clients
-			if(client2(hashNum %7) < 0)
+			if(clientRead(hashNum %7, fileName) < 0)
 			{
 				cout << "first server down unreachable, connecting to next" << endl;
-				if(client2((hashNum +2) % 7) < 0)
+				if(clientRead((hashNum +2) % 7, fileName) < 0)
 				{
 					cout << "second server unreachable, connecting to next" << endl;
 					
-					if(client2((hashNum +4) % 7) < 0)
+					if(clientRead((hashNum +4) % 7, fileName) < 0)
 					{
 						cout << "None of the servers are reachable, aborting write" << endl;
 					}
@@ -301,9 +328,12 @@ void readFile(string fileName){
 
 
 
-int client2(int hashVal)
+int clientRead(int hashVal, string fileName)
 {
-	int portArr[7] = {2312, 2313, 2314, 2315, 2316, 2317,2318};
+
+
+
+      int portArr[7] = {2312, 2313, 2314, 2315, 2316, 2317,2318};
 	string machineName[7] = {"dc01.utdallas.edu", "dc02.utdallas.edu", "dc03.utdallas.edu", "dc04.utdallas.edu", "dc05.utdallas.edu", "dc06.utdallas.edu", "dc07.utdallas.edu"};
 
      int sockfd, portno, n;
@@ -348,36 +378,192 @@ int client2(int hashVal)
 	     return -1;
      }
 	
-      n = read(sockfd,buffer,255);
+
+     //handshake protocol
+     //
+    fd_set socketfd;
+    FD_ZERO(&socketfd);
+    FD_SET(sockfd, &socketfd);
+
+    //setting timeoutvalue
+    struct timeval timeout;
+    timeout.tv_sec = 5;
+    timeout.tv_usec = 0;
+	
+      n = write(sockfd, "Sending ack", 20);
 
 
+      //waiting for ack message
+      int ret = select(sockfd+1, &socketfd, NULL, NULL, &timeout);
 
 
-      std::time_t current_time = std::time(nullptr);
-      char timestamp_str[64];
-      std::strftime(timestamp_str, sizeof(timestamp_str), "%Y-%m-%d %H:%M:%S", std::localtime(&current_time));
-      // Read from the text file
+      if(ret > 0){
 
-  
+     	 n = read(sockfd,buffer,255);
+      }
+      else
+      {
+	cout << "No message from server, abort" << endl;
+	return -1;
+      }
+
+
+      //creating the request
+      char request_char[100];
+
+      //getting the timestamp
+      milliseconds ms = duration_cast< milliseconds >(
+		    system_clock::now().time_since_epoch()
+		);
+
+      string timestampString  = to_string(ms.count());
+
+      //getting unique keyvalue from hashing fileName
+     string key = getkeyVal(fileName);
+
+    string request = timestampString + ":get:" + key;
+
+	converStringToChar(request_char, request); 
+
+  	n = write(sockfd, request_char,100);
+
+
+        
 
 }
-/*
-void sendFile(FILE *fp, int sockfd)
+
+
+//function to send write request
+int clientWrite(int hashVal, string fileName)
 {
-	char buffer[256];
 
-	while(fgets * (data,buffer , fp) != NULL)
-	{
-		if(write(sockfd,buffer,strlen(buffer))== -1)
-		{
-			fprintf("error sending file");
 
-		}
+	//arr storying all server names and portnumbers
+      int portArr[7] = {2312, 2313, 2314, 2315, 2316, 2317,2318};
+	string machineName[7] = {"dc01.utdallas.edu", "dc02.utdallas.edu", "dc03.utdallas.edu", "dc04.utdallas.edu", "dc05.utdallas.edu", "dc06.utdallas.edu", "dc07.utdallas.edu"};
 
-		bzero(data, SIZE);
-	}
 
+//	storing the variables needed to create client
+     int sockfd, portno, n;
+     
+     struct sockaddr_in serv_addr;
+     
+     struct hostent *server;
+
+
+
+     char buffer[256];
+
+    //creating client
+     portno = (portArr[hashVal]);
+
+     sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+     if (sockfd < 0) {
+
+	    printf("ERROR opening socket");
+	    return -1;
+     }
+
+     server = gethostbyname(machineName[hashVal].c_str());
+
+     if (server == NULL) {
+
+	     fprintf(stderr,"ERROR, no such host\n");
+	     return -1;
+
+     }
+
+     bzero((char *) &serv_addr, sizeof(serv_addr));
+
+     serv_addr.sin_family = AF_INET;
+
+     bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
+
+     if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) 
+     {
+	     printf("ERROR connecting");
+	     return -1;
+     }
+	
+
+     //handshake protocol
+     //
+    fd_set socketfd;
+    FD_ZERO(&socketfd);
+    FD_SET(sockfd, &socketfd);
+
+    //setting timeoutvalue
+    struct timeval timeout;
+    timeout.tv_sec = 5;
+    timeout.tv_usec = 0;
+	
+      n = write(sockfd, "Sending ack", 20);
+
+
+      //waiting for ack message
+      int ret = select(sockfd+1, &socketfd, NULL, NULL, &timeout);
+
+
+      if(ret > 0){
+
+     	 n = read(sockfd,buffer,255);
+      }
+      else
+      {
+	cout << "No message from server, abort" << endl;
+	return -1;
+      }
+
+
+      //creating the request
+      char request_char[100];
+
+      //getting the timestamp
+      milliseconds ms = duration_cast< milliseconds >(
+		    system_clock::now().time_since_epoch()
+		);
+
+      string timestampString  = to_string(ms.count());
+
+      //getting unique keyvalue from hashing fileName
+     string key = getkeyVal(fileName);
+
+    string request = timestampString + ":write:" + key;
+
+	converStringToChar(request_char, request); 
+
+  	n = write(sockfd, request_char,100);
+
+
+        
+
+}
+
+
+void converStringToChar(char* timeChar, string timeStr){
+	    
+	for(int i=0; i < timeStr.length(); ++i){
+		        timeChar[i] = timeStr[i];
+			  }
+}
+
+
+
+string getkeyVal(const std::string& obj) {
+	    // Calculate the hash value based on the object
+     int sum = 0;
+
+     for (char c : obj) {
+
+	     sum += static_cast<int>(c);
+
+     }
+
+     return to_string(sum);
+ 
 
 
 }
-*/
+
+
