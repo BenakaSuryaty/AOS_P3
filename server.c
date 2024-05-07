@@ -7,6 +7,7 @@
 #include<pthread.h>
 #include<glib.h>
 
+#include "queue.h"
 
 //for socket api and functionality
 #include<sys/types.h>
@@ -34,6 +35,9 @@ typedef struct sockaddr SA;
 pthread_mutex_t eventQueue_mutex;
 pthread_cond_t eventQueue_cond;
 
+//event queue
+
+
 
 //NOTE: helper funcitons
 
@@ -46,21 +50,26 @@ int check(int exp, const char *msg){
     return exp;
 }
 
+
+
 //TODO: Add helper functions for the main logic
 
 int main(){
+    //hash to store key value pair
+    GHashTable* hash = g_hash_table_new(g_str_hash, g_str_equal);
+
 
     //thread def
     pthread_t th[THREAD_POOL_SIZE];
     pthread_mutex_init(&eventQueue_mutex, NULL);
     pthread_cond_init(&eventQueue_cond, NULL);
-  
+  /*
     for (int i = 0; i < THREAD_POOL_SIZE; i++) {
         if (pthread_create(&th[i], NULL, , NULL) != 0) { //[ ]: fix according to the helper functions.
             perror("Failed to create the thread");
         }
     }
-
+*/
 
     //socket creation
     int server_sock, client_sock, addr_size;
@@ -88,7 +97,7 @@ int main(){
             perror("Failed to join the thread");
         }
     }
-    pthread_mutex_destroy(&mutexQueue);
-    pthread_cond_destroy(&condQueue);
+    pthread_mutex_destroy(&eventQueue_mutex);
+    pthread_cond_destroy(&eventQueue_cond);
    return 0; 
 }
