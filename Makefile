@@ -1,6 +1,6 @@
 CC=gcc
-CFLAGS=-std=c99 -g -Wall -D_GNU_SOURCE $(shell pkg-config --cflags glib-2.0)
-LIBS=$(shell pkg-config --libs glib-2.0)
+CFLAGS=-std=c99 -g -Wall
+LIBS=
 TARGET=server
 SRCDIR=src
 OBJDIR=obj
@@ -10,16 +10,19 @@ OBJS=$(patsubst $(SRCDIR)/%.c,$(OBJDIR)/%.o,$(SRCS))
 
 all: $(TARGET)
 
-$(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
+$(TARGET): $(OBJS) $(OBJDIR)/hash.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LIBS) -pthread
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.c | $(OBJDIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(OBJDIR)/hash.o: $(SRCDIR)/hash.c $(SRCDIR)/hash.h | $(OBJDIR)
+	$(CC) $(CFLAGS) -c -o $@ $(SRCDIR)/hash.c
 
 $(OBJDIR):
 	mkdir -p $(OBJDIR)
 
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -f $(OBJS) $(OBJDIR)/hash.o $(TARGET)
 
 .PHONY: clean

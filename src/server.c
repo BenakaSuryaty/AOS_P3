@@ -5,7 +5,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <pthread.h>
-#include <glib.h>
+#include "hash.h"
 
 #include "queue.h"
 
@@ -21,15 +21,15 @@
 
 #define ERROR (-1)
 #define SERVER_STATUS 0       // 0: accepting connections(storing in mem); 1: stopped connection(writing to storage)
-#define SERVER_PORT 4000      //[ ]: change to dc machine's available port
-#define SERVER_IP "127.0.0.1" //[ ]: change to dc machine's IP
+#define SERVER_PORT 4000     
+#define SERVER_IP "127.0.0.1" //"10.176.69.34"
 #define SERVER_BACKLOG 6
 #define THREAD_POOL_SIZE 15
 #define MAX_MSG_SIZE 1024
 
 // hash table for key-value store
-GHashTable *hash;
 
+HashTable *hash;
 // struct def to store address info
 typedef struct sockaddr_in SA_IN;
 typedef struct sockaddr SA;
@@ -115,7 +115,7 @@ void handle_client(void *arg)
             break;
         }
         pthread_mutex_lock(&hash_locks[hash_func(key)]);
-        char *result = g_hash_table_lookup(hash, key);
+        char *result = hashTableGet(hash, key);
         pthread_mutex_unlock(&hash_locks[hash_func(key)]);
 
         if (result != NULL)
@@ -135,13 +135,13 @@ void handle_client(void *arg)
             break;
         }
         pthread_mutex_lock(&hash_locks[hash_func(key)]);
-        if (g_hash_table_lookup(hash, key) != NULL)
+        if (hashTableGet(hash, key) != NULL)
         {
             snprintf(response, sizeof(response), "Key '%s' already exists, use 'u' to update\n", key);
         }
         else
         {
-            g_hash_table_insert(hash, g_strdup(key), g_strdup(value));
+            hashTablePut(hash, key, value);
             snprintf(response, sizeof(response), "Value '%s' stored for key '%s'\n", value, key);
         }
         pthread_mutex_unlock(&hash_locks[hash_func(key)]);
@@ -154,9 +154,9 @@ void handle_client(void *arg)
             break;
         }
         pthread_mutex_lock(&hash_locks[hash_func(key)]);
-        if (g_hash_table_lookup(hash, key) != NULL)
+        if (hashTableGet(hash, key) != NULL)
         {
-            g_hash_table_replace(hash, g_strdup(key), g_strdup(value));
+            hashTablePut(hash, key, value);
             snprintf(response, sizeof(response), "Value '%s' updated for key '%s'\n", value, key);
         }
         else
@@ -209,14 +209,13 @@ int main()
         }
     }
 
-    // hash table definition
-    hash = g_hash_table_new(g_str_hash, g_str_equal);
+    // Create the hash table
+    hash = createHashTable();
 
     // populating the hash table with initial key-value pairs
-    g_hash_table_insert(hash, "car", "Audi");
-    g_hash_table_insert(hash, "movie", "Interstellar");
-    g_hash_table_insert(hash, "bike", "Ducati");
-
+    hashTablePut(hash, "car", "Audi");
+    hashTablePut(hash, "movie", "Interstellar");
+    hashTablePut(hash, "bike", "Ducati");
     // socket creation
     int server_sock, client_sock, addr_size;
     SA_IN server_addr, client_addr;
@@ -268,7 +267,5 @@ int main()
     pthread_mutex_destroy(&eventQueue_mutex);
     pthread_cond_destroy(&eventQueue_cond);
 
-    // Freeing hash table memory
-    g_hash_table_destroy(hash);
     return 0;
 }
