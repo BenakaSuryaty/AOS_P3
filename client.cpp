@@ -225,29 +225,16 @@ int hashFunction(const std::string& obj) {
 
 int clientRead(int hashVal, string keyName)
 {
-
-
-
       int portArr[7] = {2312, 2313, 2314, 2315, 2316, 2317,2318};
 	string machineName[7] = {"dc01.utdallas.edu", "dc02.utdallas.edu", "dc03.utdallas.edu", "dc04.utdallas.edu", "dc05.utdallas.edu", "dc06.utdallas.edu", "dc07.utdallas.edu"};
-
      int sockfd, portno, n;
-     
      struct sockaddr_in serv_addr;
-     
      struct hostent *server;
-
-
-
      char buffer[256];
 
-    
      portno = (portArr[hashVal]);
-
      sockfd = socket(AF_INET, SOCK_STREAM, 0);
-
      if (sockfd < 0) {
-
 	    printf("ERROR opening socket");
 	    return -1;
      }
@@ -255,10 +242,8 @@ int clientRead(int hashVal, string keyName)
      server = gethostbyname(machineName[hashVal].c_str());
 
      if (server == NULL) {
-
 	     fprintf(stderr,"ERROR, no such host\n");
 	     return -1;
-
      }
 
      bzero((char *) &serv_addr, sizeof(serv_addr));
@@ -272,69 +257,28 @@ int clientRead(int hashVal, string keyName)
 	     printf("ERROR connecting");
 	     return -1;
      }
-	
-
-   /*  //handshake protocol
-     //
-    fd_set socketfd;
-    FD_ZERO(&socketfd);
-    FD_SET(sockfd, &socketfd);
-
-    //setting timeoutvalue
-    struct timeval timeout;
-    timeout.tv_sec = 5;
-    timeout.tv_usec = 0;
-	
-      n = write(sockfd, "Sending ack", 20);
 
 
-      //waiting for ack message
-      int ret = select(sockfd+1, &socketfd, NULL, NULL, &timeout);
-
-
-      if(ret > 0){
-
-     	 n = read(sockfd,buffer,255);
-      }
-      else
-      {
-	cout << "No message from server, abort" << endl;
-	return -1;
-      }
-*/
       if(!handshake_protocol(sockfd))
       {
 	cout << "Handshake not completed, aborting" << endl;
       }
-
-      //creating the request
-      char request_char[100];
-
-      //getting the timestamp
-      milliseconds ms = duration_cast< milliseconds >(
-		    system_clock::now().time_since_epoch()
-		);
-
-      string timestampString  = to_string(ms.count());
-
-      //getting unique keyvalue from hashing fileName
-     string key = getkeyVal(keyName);
+      
+      //creating the variablees needed
+      char request_char[100];	
+      bzero(buffer, 255);
+         
+      //communicating to server
+      string request = "read." + keyName + ".NULL";
+      converStringToChar(request_char, request); 	
+      n = write(sockfd, request_char,100);
 
 
-     //update or read
-    string request = timestampString + "." +  keyName + "."  + "read";
+      //reading values
+      read(sockfd, buffer, 256);
+      printf(buffer);
 
-	converStringToChar(request_char, request); 
-
-  	n = write(sockfd, request_char,100);
-
-	n = read(sockfd, buffer, 255);
-
-	printf("Here is the Key value: %s\n", buffer);	
-
-	return 0;
-	
-        
+      return 1;        
 
 }
 
@@ -342,8 +286,6 @@ int clientRead(int hashVal, string keyName)
 //function to send update request
 int clientWrite(int hashVal, string keyName)
 {
-
-
 	//arr storying all server names and portnumbers
       int portArr[7] = {2312, 2313, 2314, 2315, 2316, 2317,2318};
 	string machineName[7] = {"dc01.utdallas.edu", "dc02.utdallas.edu", "dc03.utdallas.edu", "dc04.utdallas.edu", "dc05.utdallas.edu", "dc06.utdallas.edu", "dc07.utdallas.edu"};
@@ -351,22 +293,14 @@ int clientWrite(int hashVal, string keyName)
 
 //	storing the variables needed to create client
      int sockfd, portno, n;
-     
      struct sockaddr_in serv_addr;
-     
      struct hostent *server;
-
-
-
      char buffer[256];
 
     //creating client
      portno = (portArr[hashVal]);
-
      sockfd = socket(AF_INET, SOCK_STREAM, 0);
-
      if (sockfd < 0) {
-
 	    printf("ERROR opening socket");
 	    return -1;
      }
@@ -374,16 +308,12 @@ int clientWrite(int hashVal, string keyName)
      server = gethostbyname(machineName[hashVal].c_str());
 
      if (server == NULL) {
-
 	     fprintf(stderr,"ERROR, no such host\n");
 	     return -1;
-
      }
 
      bzero((char *) &serv_addr, sizeof(serv_addr));
-
      serv_addr.sin_family = AF_INET;
-
      bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
 
      if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) 
@@ -392,85 +322,33 @@ int clientWrite(int hashVal, string keyName)
 	     return -1;
      }
 	
-
-     //handshake protocol
-     //
-  /*  fd_set socketfd;
-    FD_ZERO(&socketfd);
-    FD_SET(sockfd, &socketfd);
-
-    //setting timeoutvalue
-    struct timeval timeout;
-    timeout.tv_sec = 5;
-    timeout.tv_usec = 0;
-	
-      n = write(sockfd, "Sending ack", 20);
-
-
-      //waiting for ack message
-      int ret = select(sockfd+1, &socketfd, NULL, NULL, &timeout);
-
-
-      if(ret > 0){
-
-     	 n = read(sockfd,buffer,255);
-      }
-      else
-      {
-	cout << "No message from server, abort" << endl;
-	return -1;
-      }*/
-
 	if(!handshake_protocol(sockfd))
 	{
 		cout << "Handshake not completed, returning back to main\n";
 		return -1;	
 	}
 
-      //creating the request
+      	//creating the variablees needed
       char request_char[100];
-
-      //getting the timestamp
-      milliseconds ms = duration_cast< milliseconds >(
-		    system_clock::now().time_since_epoch()
-		);
-
-      string timestampString  = to_string(ms.count());
-
-
+      string value;
+	bzero(buffer, 255);
+      
+	//getting the value to insert
+      cout << "Enter value you'd like to replace the old value with: ";
+      cin >> value;
+   
       //communicating to server
-    string request = timestampString + "." + keyName + ".update";
-
-	converStringToChar(request_char, request); 
-
+      string request = "update." + keyName + "." + value;
+      converStringToChar(request_char, request); 
   	n = write(sockfd, request_char,100);
 
-	//getting reques to update value
-	n = read(sockfd, buffer, 255);
-
-	printf( buffer);
-
-	//prompting user to enter updated value and creating variables for that process.
-	string keyValue;
-	bzero(buffer, 256);
-	cin >> keyValue;	
-	
-	converStringToChar(buffer, keyValue);
-
-	//sebdubg the updated valuei and getting confirmation
-	write(sockfd, buffer, 255);
-
-	bzero(buffer, 256);
-
-	read(sockfd, buffer, 255);
+	//getting confirmation
+	read(sockfd, buffer, 256);
 
 	printf(buffer);
 
-	return 1;
-	
 
-        
-
+        return 1;
 }
 
 
@@ -485,19 +363,13 @@ int clientInsert(int hashVal, string keyName)
 
 
 //	storing the variables needed to create client
-     int sockfd, portno, n;
-     
-     struct sockaddr_in serv_addr;
-     
+     int sockfd, portno, n;    
+     struct sockaddr_in serv_addr;    
      struct hostent *server;
-
-
-
      char buffer[256];
 
     //creating client
      portno = (portArr[hashVal]);
-
      sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
      if (sockfd < 0) {
@@ -509,16 +381,12 @@ int clientInsert(int hashVal, string keyName)
      server = gethostbyname(machineName[hashVal].c_str());
 
      if (server == NULL) {
-
 	     fprintf(stderr,"ERROR, no such host\n");
 	     return -1;
-
      }
 
      bzero((char *) &serv_addr, sizeof(serv_addr));
-
      serv_addr.sin_family = AF_INET;
-
      bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
 
      if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) 
@@ -528,75 +396,32 @@ int clientInsert(int hashVal, string keyName)
      }
 	
 
-     //handshake protocol
-     //
-   /* fd_set socketfd;
-    FD_ZERO(&socketfd);
-    FD_SET(sockfd, &socketfd);
-
-    //setting timeoutvalue
-    struct timeval timeout;
-    timeout.tv_sec = 5;
-    timeout.tv_usec = 0;
-	
-      n = write(sockfd, "Sending ack", 20);
-
-
-      //waiting for ack message
-      int ret = select(sockfd+1, &socketfd, NULL, NULL, &timeout);
-
-
-      if(ret > 0){
-
-     	 n = read(sockfd,buffer,255);
-      }
-      else
-      {
-	cout << "No message from server, abort" << endl;
-	return -1;
-      }
-*/
-	if(!handshake_protocol(sockfd))
+ 	if(!handshake_protocol(sockfd))
 	{
 		cout << "Handshake not completed, returning back to main\n";
 		return -1;	
 	}
 
-      //creating the request
+      //creating the variablees needed
       char request_char[100];
-
-      //getting the timestamp
-      milliseconds ms = duration_cast< milliseconds >(
-		    system_clock::now().time_since_epoch()
-		);
-
-      string timestampString  = to_string(ms.count());
-
-
+      string value;
+	bzero(buffer, 255);
+      //getting the value to insert
+      cout << "Enter value to be inserted: ";
+      cin >> value;
+   
       //communicating to server
-    string request = timestampString + "." + keyName + ".insert";
+      string request = "insert." + keyName + "." + value;
 
-	converStringToChar(request_char, request); 
+      converStringToChar(request_char, request); 
 
   	n = write(sockfd, request_char,100);
-	printf( buffer);
 
-	//getting value to be sent.
-	string keyValue;
-	bzero(buffer, 256);
-	cin >> keyValue;	
-	
-	converStringToChar(buffer, keyValue);
-
-	//sebdubg the inserted valuei and getting confirmation
-	write(sockfd, buffer, 255);
-
-	bzero(buffer, 256);
-
-	read(sockfd, buffer, 255);
+	//getting confirmation
+	read(sockfd, buffer, 256);
 
 	printf(buffer);
-	
+
 
         return 1;
 
@@ -629,89 +454,52 @@ string getkeyVal(const std::string& obj) {
 
 }
 
+
+
+
 bool handshake_protocol(int server_sock) {
-	  
-      	char server_msg[MAX_HANDSHAKE_MSG_SIZE];
-
+	char server_msg[MAX_HANDSHAKE_MSG_SIZE];
 	char client_msg[MAX_HANDSHAKE_MSG_SIZE];
-
 	ssize_t bytes_received, bytes_sent;
 
+
+	
 	printf("Handshake initiated.\n");
 
-	// Step 1: Client receives the server's handshake message
 
-	     bytes_received = recv(server_sock, server_msg, sizeof(server_msg), 0);
-
-	         if (bytes_received == -1) {
-                 
-			 perror("recv");
-                         return false;
-	   	 }
-
-                        
-		 server_msg[bytes_received] = '\0';
-        
-		 printf("Server: %s\n", server_msg);
-
-		 // Step 2: Client sends its handshake message
-		 const char* client_hello = "Hello! Here is my handshake message.\n";
-		 bytes_sent = send(server_sock, client_hello, strlen(client_hello), 0);
-		 if (bytes_sent == -1) {
-
-			 perror("send");
-
-			 return false;
-
-		 }
-
-		 // Step 3: Client receives the server's response
-		 bytes_received = recv(server_sock, server_msg, sizeof(server_msg), 0);
-		 if (bytes_received == -1) {
-
-			 perror("recv");
-
-			 return false;
-		 }
+	
+	const char* client_hello = "Requesting connection.\n";
+	bytes_sent = send(server_sock, client_hello, strlen(client_hello), 0);
+	if (bytes_sent == -1) {
+		perror("send");
+		return false;
+	}
 
 
+//	 Receive acknowledgment from server
+	 bytes_received = recv(server_sock, server_msg, sizeof(server_msg), 0);
+	 if (bytes_received == -1) {
 
-		 server_msg[bytes_received] = '\0';
+                perror("recv");
+		return false;
+	 }
+	 server_msg[bytes_received] = '\0';
+	 printf("Server: %s\n", server_msg);
 
+	 const char* client_response = "Connection established.\n";
+	 bytes_sent = send(server_sock, client_response, strlen(client_response), 0);
+	 if (bytes_sent == -1) {
 
+		 perror("send");
+		 return false;
+	 }
 
-		 printf("Server: %s\n", server_msg);
-
-
-
-
-
-		 // Step 4: Client sends its confirmation
-
-		 const char* client_response = "Received server response. Handshake complete.\n";
-
-		 bytes_sent = send(server_sock, client_response, strlen(client_response), 0);
-
-
-
-		 if (bytes_sent == -1) {
-
-			 perror("send");
-
-			 return false;
-
-		 }
-
-
-
-		 printf("Handshake complete.\n");
-
-		 // Handshake complete
-
-		 return true;
+	 printf("Handshake complete.\n");
+	 printf("Connected to server!\n");
+	 // Handshake complete
+	 return true;
 
 }
-
 
 
 
