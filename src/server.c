@@ -109,7 +109,11 @@ void handle_client(void *arg)
     {
     case 'r':
     case 'R':
-
+        if (key == NULL)
+        {
+            snprintf(response, sizeof(response), "Invalid operation: key is NULL\n");
+            break;
+        }
         pthread_mutex_lock(&hash_locks[hash_func(key)]);
         char *result = g_hash_table_lookup(hash, key);
         pthread_mutex_unlock(&hash_locks[hash_func(key)]);
@@ -125,21 +129,41 @@ void handle_client(void *arg)
         break;
     case 'i':
     case 'I':
-
+        if (key == NULL || value == NULL)
+        {
+            snprintf(response, sizeof(response), "Invalid operation: key or value is NULL\n");
+            break;
+        }
         pthread_mutex_lock(&hash_locks[hash_func(key)]);
-        g_hash_table_replace(hash, g_strdup(key), g_strdup(value));
+        if (g_hash_table_lookup(hash, key) != NULL)
+        {
+            snprintf(response, sizeof(response), "Key '%s' already exists, use 'u' to update\n", key);
+        }
+        else
+        {
+            g_hash_table_insert(hash, g_strdup(key), g_strdup(value));
+            snprintf(response, sizeof(response), "Value '%s' stored for key '%s'\n", value, key);
+        }
         pthread_mutex_unlock(&hash_locks[hash_func(key)]);
-
-        snprintf(response, sizeof(response), "Value '%s' stored for key '%s'\n", value, key);
         break;
     case 'u':
     case 'U':
-
+        if (key == NULL || value == NULL)
+        {
+            snprintf(response, sizeof(response), "Invalid operation: key or value is NULL\n");
+            break;
+        }
         pthread_mutex_lock(&hash_locks[hash_func(key)]);
-        g_hash_table_replace(hash, g_strdup(key), g_strdup(value));
+        if (g_hash_table_lookup(hash, key) != NULL)
+        {
+            g_hash_table_replace(hash, g_strdup(key), g_strdup(value));
+            snprintf(response, sizeof(response), "Value '%s' updated for key '%s'\n", value, key);
+        }
+        else
+        {
+            snprintf(response, sizeof(response), "Key '%s' not found\n", key);
+        }
         pthread_mutex_unlock(&hash_locks[hash_func(key)]);
-
-        snprintf(response, sizeof(response), "Value '%s' updated for key '%s'\n", value, key);
         break;
     default:
         snprintf(response, sizeof(response), "Invalid operation\n");
@@ -152,8 +176,6 @@ void handle_client(void *arg)
         perror("send");
     }
 }
-
-
 
 // function to check the errors
 int check(int exp, const char *msg)
@@ -198,7 +220,6 @@ int main()
     // socket creation
     int server_sock, client_sock, addr_size;
     SA_IN server_addr, client_addr;
-   
 
     check((server_sock = socket(AF_INET, SOCK_STREAM, 0)), "Failed to create socket.");
 
@@ -222,12 +243,11 @@ int main()
                   accept(server_sock, (SA *)&client_addr, (socklen_t *)&addr_size),
               "Accept failed!");
         printf("\nconnected!\n");
-        
+
         pthread_mutex_lock(&eventQueue_mutex);
         enqueue(client_sock);
         pthread_cond_signal(&eventQueue_cond);
         pthread_mutex_unlock(&eventQueue_mutex);
-
     }
 
     // joining threads and destroying pthread vars
