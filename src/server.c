@@ -39,6 +39,12 @@ pthread_mutex_t eventQueue_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t eventQueue_cond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t hash_locks[100]; // Array of locks for each key, assuming maximum 100 keys
 
+// Function prototypes
+int hash_func(const char *key);
+void *thread_task(void *arg);
+int check(int exp, const char *msg);
+void handle_client(void *arg);
+
 // NOTE: helper funcitons
 
 // function to generate a hash value for the given key using the DJB2 algorithm
@@ -60,134 +66,94 @@ void *thread_task(void *arg)
 {
     while (true)
     {
-        int *pclient;
-
+        int pclient;
         pthread_mutex_lock(&eventQueue_mutex);
         pthread_cond_wait(&eventQueue_cond, &eventQueue_mutex);
         pclient = dequeue();
         pthread_mutex_unlock(&eventQueue_mutex);
 
-        if (pclient != NULL)
+        if (pclient != ERROR)
         {
-            int client_sock = *pclient;
 
-            // Handle client request
-            char client_msg[MAX_MSG_SIZE];
-            ssize_t bytes_received = recv(client_sock, client_msg, sizeof(client_msg), 0);
-            if (bytes_received == -1)
-            {
-                perror("recv");
-                close(client_sock);
-                free(pclient);
-                continue;
-            }
-            client_msg[bytes_received] = '\0';
-
-            // Parse client request based on delimiter
-            char *operation, *key, *value;
-            operation = strtok(client_msg, ".");
-            key = strtok(NULL, ".");
-            value = strtok(NULL, ".");
-
-            // Process client request based on operation
-            char response[MAX_MSG_SIZE];
-
-            switch (operation[0])
-            {
-                case 'r':
-                case 'R':
-                    pthread_mutex_lock(&hash_locks[hash_func(key)]);
-                    char *result = g_hash_table_lookup(hash, key);
-                    pthread_mutex_unlock(&hash_locks[hash_func(key)]);
-
-                    if (result != NULL)
-                    {
-                        snprintf(response, sizeof(response), "Value for key '%s' is '%s'\n", key, result);
-                    }
-                    else
-                    {
-                        snprintf(response, sizeof(response), "Key '%s' not found\n", key);
-                    }
-                    break;
-                case 'i':
-                case 'I':
-                    pthread_mutex_lock(&hash_locks[hash_func(key)]);
-                    g_hash_table_replace(hash, g_strdup(key), g_strdup(value));
-                    pthread_mutex_unlock(&hash_locks[hash_func(key)]);
-
-                    snprintf(response, sizeof(response), "Value '%s' stored for key '%s'\n", value, key);
-                    break;
-                case 'u':
-                case 'U':
-                    pthread_mutex_lock(&hash_locks[hash_func(key)]);
-                    g_hash_table_replace(hash, g_strdup(key), g_strdup(value));
-                    pthread_mutex_unlock(&hash_locks[hash_func(key)]);
-
-                    snprintf(response, sizeof(response), "Value '%s' updated for key '%s'\n", value, key);
-                    break;
-                default:
-                    snprintf(response, sizeof(response), "Invalid operation\n");
-                    break;
-            }
-
-            ssize_t bytes_sent = send(client_sock, response, strlen(response), 0);
-            if (bytes_sent == -1)
-            {
-                perror("send");
-            }
-
-            close(client_sock);
-            free(pclient);
+            handle_client(&pclient);
         }
     }
 }
 
-
-// function to perform the handshake protocol
-bool handshake_protocol(int client_sock, char *c_addr)
+void handle_client(void *arg)
 {
-    char server_msg[MAX_MSG_SIZE];
+
+    int *connected_client = (int *)arg;  // Cast the argument to int pointer
+    int client_sock = *connected_client; // Dereference the pointer to get the client socket
+
+    // Handle client request
+
     char client_msg[MAX_MSG_SIZE];
-    ssize_t bytes_received, bytes_sent;
-
-    // Handshake init message
-    printf("Handshake initiated.\n");
-
-    // Receive connection request from the client
-    bytes_received = recv(client_sock, client_msg, sizeof(client_msg), 0);
+    ssize_t bytes_received = recv(client_sock, client_msg, sizeof(client_msg), 0);
     if (bytes_received == -1)
     {
         perror("recv");
-        return false;
+        close(client_sock);
     }
     client_msg[bytes_received] = '\0';
-    printf("Client: %s\n", client_msg);
 
-    // Send acknowledgment to client
-    char server_hello[MAX_MSG_SIZE];
-    snprintf(server_hello, MAX_MSG_SIZE, "Connection request received. Server IP:%s.\n", SERVER_IP);
-    bytes_sent = send(client_sock, server_hello, strlen(server_hello), 0);
+    // Parse client request based on delimiter
+    char *operation, *key, *value;
+    operation = strtok(client_msg, ".");
+    key = strtok(NULL, ".");
+    value = strtok(NULL, ".");
+
+    // Process client request based on operation
+    char response[MAX_MSG_SIZE];
+    switch (operation[0])
+    {
+    case 'r':
+    case 'R':
+
+        pthread_mutex_lock(&hash_locks[hash_func(key)]);
+        char *result = g_hash_table_lookup(hash, key);
+        pthread_mutex_unlock(&hash_locks[hash_func(key)]);
+
+        if (result != NULL)
+        {
+            snprintf(response, sizeof(response), "Value for key '%s' is '%s'\n", key, result);
+        }
+        else
+        {
+            snprintf(response, sizeof(response), "Key '%s' not found\n", key);
+        }
+        break;
+    case 'i':
+    case 'I':
+
+        pthread_mutex_lock(&hash_locks[hash_func(key)]);
+        g_hash_table_replace(hash, g_strdup(key), g_strdup(value));
+        pthread_mutex_unlock(&hash_locks[hash_func(key)]);
+
+        snprintf(response, sizeof(response), "Value '%s' stored for key '%s'\n", value, key);
+        break;
+    case 'u':
+    case 'U':
+
+        pthread_mutex_lock(&hash_locks[hash_func(key)]);
+        g_hash_table_replace(hash, g_strdup(key), g_strdup(value));
+        pthread_mutex_unlock(&hash_locks[hash_func(key)]);
+
+        snprintf(response, sizeof(response), "Value '%s' updated for key '%s'\n", value, key);
+        break;
+    default:
+        snprintf(response, sizeof(response), "Invalid operation\n");
+        break;
+    }
+
+    ssize_t bytes_sent = send(client_sock, response, strlen(response), 0);
     if (bytes_sent == -1)
     {
         perror("send");
-        return false;
     }
-
-    // Receive connection confirmation from client
-    bytes_received = recv(client_sock, server_msg, sizeof(server_msg), 0);
-    if (bytes_received == -1)
-    {
-        perror("recv");
-        return false;
-    }
-    server_msg[bytes_received] = '\0';
-    printf("Client: %s\n", server_msg);
-
-    printf("Handshake complete.\n");
-    printf("Client connected! Client's IP address: %s\n", c_addr);
-    // Handshake complete
-    return true;
 }
+
+
 
 // function to check the errors
 int check(int exp, const char *msg)
@@ -208,7 +174,7 @@ int main()
     pthread_cond_init(&eventQueue_cond, NULL);
 
     // Initialize locks for hash table keys
-    for (int i = 0; i < 100; i++)
+    for (int i = 0; i < 10; i++)
     {
         pthread_mutex_init(&hash_locks[i], NULL);
     }
@@ -216,7 +182,7 @@ int main()
     for (int i = 0; i < THREAD_POOL_SIZE; i++)
     {
         if (pthread_create(&th[i], NULL, thread_task, NULL) != 0)
-        { 
+        {
             perror("Failed to create the thread");
         }
     }
@@ -232,7 +198,7 @@ int main()
     // socket creation
     int server_sock, client_sock, addr_size;
     SA_IN server_addr, client_addr;
-    char c_addr[INET_ADDRSTRLEN]; // to display the connect client's address
+   
 
     check((server_sock = socket(AF_INET, SOCK_STREAM, 0)), "Failed to create socket.");
 
@@ -255,28 +221,13 @@ int main()
         check(client_sock =
                   accept(server_sock, (SA *)&client_addr, (socklen_t *)&addr_size),
               "Accept failed!");
+        printf("\nconnected!\n");
+        
+        pthread_mutex_lock(&eventQueue_mutex);
+        enqueue(client_sock);
+        pthread_cond_signal(&eventQueue_cond);
+        pthread_mutex_unlock(&eventQueue_mutex);
 
-        inet_ntop(AF_INET, &client_addr.sin_addr, c_addr, INET_ADDRSTRLEN);
-
-        int *pclient = malloc(sizeof(int));
-        *pclient = client_sock;
-
-        // perform handshake protocol
-        bool agree_disagree = handshake_protocol(client_sock, c_addr);
-
-        if (agree_disagree)
-        {
-            pthread_mutex_lock(&eventQueue_mutex);
-            enqueue(pclient);
-            pthread_cond_signal(&eventQueue_cond);
-            pthread_mutex_unlock(&eventQueue_mutex);
-        }
-        else
-        {
-            printf("Handshake sequence failed.\n%s failed to acknowledge.\nClosing %s's connection.", c_addr, c_addr);
-            close(client_sock);
-            free(pclient);
-        }
     }
 
     // joining threads and destroying pthread vars
