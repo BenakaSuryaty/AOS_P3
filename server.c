@@ -25,57 +25,132 @@
 #define SERVER_IP "127.0.0.1" //[ ]: change to dc machine's IP
 #define SERVER_BACKLOG 6
 #define THREAD_POOL_SIZE 15
-#define MAX_HANDSHAKE_MSG_SIZE 1024
+#define MAX_MSG_SIZE 1024
+
+// hash table for key-value store
+GHashTable *hash;
 
 // struct def to store address info
 typedef struct sockaddr_in SA_IN;
 typedef struct sockaddr SA;
 
-// mutex and condition for the threads
+// mutex and condition vars for the threads
 pthread_mutex_t eventQueue_mutex;
 pthread_cond_t eventQueue_cond;
+pthread_mutex_t hash_locks[100]; // Array of locks for each key, assuming maximum 100 keys
 
 // NOTE: helper funcitons
 
+// function to generate a hash value for the given key using the DJB2 algorithm
+int hash_func(const char *key) {
+    unsigned long hash = 5381;
+    int c;
+
+    while ((c = *key++)) {
+        hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+    }
+
+    return (int)(hash % 100); // Ensure hash value is within the range of the hash_locks array size and cast to int
+}
+
+
 // function to execute the given thread id and close the thread once it's done
-//[ ] complete this function
-void *thread_function(void *arg)
+//[x] complete this function
+void *thread_task(void *arg)
 {
     while (true)
     {
-        int *pclient = dequeue();
+        int *pclient;
+
+        pthread_mutex_lock(&eventQueue_mutex);
+        pthread_cond_wait(&eventQueue_cond, &eventQueue_mutex);
+        pclient = dequeue();
+        pthread_mutex_unlock(&eventQueue_mutex);
+
         if (pclient != NULL)
         {
-            // some function to handle connection
-            continue;
-            /*handle client function*/
+            int client_sock = *pclient;
+
+            // Handle client request
+            char client_msg[MAX_MSG_SIZE];
+            ssize_t bytes_received = recv(client_sock, client_msg, sizeof(client_msg), 0);
+            if (bytes_received == -1)
+            {
+                perror("recv");
+                close(client_sock);
+                free(pclient);
+                continue;
+            }
+            client_msg[bytes_received] = '\0';
+
+             // Parse client request based on delimiter
+            char *operation, *key, *value;
+            operation = strtok(client_msg, ".");
+            key = strtok(NULL, ".");
+            value = strtok(NULL, ".");
+
+            // Process client request based on operation
+            char response[MAX_MSG_SIZE];
+            
+            switch (operation[0])
+            {
+                case 'r':
+                case 'R':
+                  
+                    char *result = g_hash_table_lookup(hash, key);
+              
+
+                    if (result != NULL)
+                    {
+                        snprintf(response, sizeof(response), "Value for key '%s' is '%s'\n", key, result);
+                    }
+                    else
+                    {
+                        snprintf(response, sizeof(response), "Key '%s' not found\n", key);
+                    }
+                    break;
+                case 'i':
+                case 'I':
+                   
+                    g_hash_table_replace(hash, g_strdup(key), g_strdup(value));
+    
+
+                    snprintf(response, sizeof(response), "Value '%s' stored for key '%s'\n", value, key);
+                    break;
+                case 'u':
+                case 'U':
+           
+                    g_hash_table_replace(hash, g_strdup(key), g_strdup(value));
+             
+
+                    snprintf(response, sizeof(response), "Value '%s' updated for key '%s'\n", value, key);
+                    break;
+                default:
+                    snprintf(response, sizeof(response), "Invalid operation\n");
+                    break;
+            }
+
+            ssize_t bytes_sent = send(client_sock, response, strlen(response), 0);
+            if (bytes_sent == -1)
+            {
+                perror("send");
+            }
+
         }
-    }
 }
 
-//[ ] edit this to match the ack/non-ack message structure
-bool handshake_protocol(int client_sock, char *addr)
+//[x] edit this to match the ack/non-ack message structure
+// function to perform the handshake protocol
+bool handshake_protocol(int client_sock, char *c_addr)
 {
-    char server_msg[MAX_HANDSHAKE_MSG_SIZE];
-    char client_msg[MAX_HANDSHAKE_MSG_SIZE];
+    char server_msg[MAX_MSG_SIZE];
+    char client_msg[MAX_MSG_SIZE];
     ssize_t bytes_received, bytes_sent;
 
-    // handshake init
+    // Handshake init message
     printf("Handshake initiated.\n");
 
-    // Construct the server hello message with the client's IP address
-    char server_hello[MAX_HANDSHAKE_MSG_SIZE];
-    snprintf(server_hello, MAX_HANDSHAKE_MSG_SIZE, "Hello client with IP: %s! Please send your handshake message.\n", addr);
-
-    // Step 1: Server sends the handshake message
-    bytes_sent = send(client_sock, server_hello, strlen(server_hello), 0);
-    if (bytes_sent == -1)
-    {
-        perror("send");
-        return false;
-    }
-
-    // Step 2: Client receives the handshake message
+    // Receive connection request from the client
     bytes_received = recv(client_sock, client_msg, sizeof(client_msg), 0);
     if (bytes_received == -1)
     {
@@ -85,16 +160,17 @@ bool handshake_protocol(int client_sock, char *addr)
     client_msg[bytes_received] = '\0';
     printf("Client: %s\n", client_msg);
 
-    // Step 3: Client sends its handshake response
-    const char *client_response = "Received server hello. Handshake complete.\n";
-    bytes_sent = send(client_sock, client_response, strlen(client_response), 0);
+    // Send acknowledgment to client
+    char server_hello[MAX_MSG_SIZE];
+    snprintf(server_hello, MAX_MSG_SIZE, "Connection request received. Server IP:%s.\n", SERVER_IP);
+    bytes_sent = send(client_sock, server_hello, strlen(server_hello), 0);
     if (bytes_sent == -1)
     {
         perror("send");
         return false;
     }
 
-    // Step 4: Server receives client's handshake response
+    // Receive connection confirmation from client
     bytes_received = recv(client_sock, server_msg, sizeof(server_msg), 0);
     if (bytes_received == -1)
     {
@@ -105,11 +181,12 @@ bool handshake_protocol(int client_sock, char *addr)
     printf("Client: %s\n", server_msg);
 
     printf("Handshake complete.\n");
-
+    printf("Client connected! Client's IP address: %s\n", c_addr);
     // Handshake complete
     return true;
 }
-// func to check the errors
+
+// function to check the errors
 int check(int exp, const char *msg)
 {
     if (exp == ERROR)
@@ -124,20 +201,32 @@ int check(int exp, const char *msg)
 
 int main()
 {
-    // hash to store key value pair
-
     // thread def
     pthread_t th[THREAD_POOL_SIZE];
     pthread_mutex_init(&eventQueue_mutex, NULL);
     pthread_cond_init(&eventQueue_cond, NULL);
 
+    // Initialize locks for hash table keys
+    for (int i = 0; i < 100; i++)
+    {
+        pthread_mutex_init(&hash_locks[i], NULL);
+    }
+
     for (int i = 0; i < THREAD_POOL_SIZE; i++)
     {
-        if (pthread_create(&th[i], NULL, thread_function, NULL) != 0)
+        if (pthread_create(&th[i], NULL, thread_task, NULL) != 0)
         { //[x]: fix according to the helper functions.
             perror("Failed to create the thread");
         }
     }
+
+    // hash table definition
+    hash = g_hash_table_new(g_str_hash, g_str_equal);
+
+    // populating the hash table with initial key-value pairs
+    g_hash_table_insert(hash, "car", "Audi");
+    g_hash_table_insert(hash, "movie", "Interstellar");
+    g_hash_table_insert(hash, "bike", "Ducati");
 
     // socket creation
     int server_sock, client_sock, addr_size;
@@ -163,13 +252,10 @@ int main()
         // waiting and accepting connections from the clients
         addr_size = sizeof(SA_IN);
         check(client_sock =
-                  accept(server_sock, (SA *)&client_addr, &addr_size),
+                  accept(server_sock, (SA *)&client_addr,(socklen_t *)&addr_size),
               "Accept failed!");
 
         inet_ntop(AF_INET, &client_addr.sin_addr, c_addr, INET_ADDRSTRLEN);
-
-        // displaying connected client info
-        printf("Client connected!(IP address: %s)\n", c_addr);
 
         int *pclient = malloc(sizeof(int));
         *pclient = client_sock;
@@ -190,7 +276,9 @@ int main()
         }
         else
         {
+            printf("Handshake sequence failed.\n%s failed to acknowledge.\nClosing %s's connection.", c_addr, c_addr);
             close(client_sock);
+            free(pclient);
         }
     }
 
@@ -203,7 +291,16 @@ int main()
         }
     }
 
+    // destroying mutex and condition vars
+    for (int i = 0; i < 100; i++)
+    {
+        pthread_mutex_destroy(&hash_locks[i]);
+    }
+
     pthread_mutex_destroy(&eventQueue_mutex);
     pthread_cond_destroy(&eventQueue_cond);
+
+    // Freeing hash table memory
+    g_hash_table_destroy(hash);
     return 0;
 }
