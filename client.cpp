@@ -294,6 +294,17 @@ int clientRead(int hashVal, string keyName)
 	printf("Server: %s\n", server_msg);
 
 
+	//checking to see if the server is down
+	const char s[2] = " ";
+	char errNum[5] = "503";
+	char *token = strtok(server_msg, s);
+
+	if(strcmp(errNum, token) == 0)
+	{
+		cout << "Server Unreachable. Returning to Main\n";
+		return -1;
+	}
+	
 	return 1;
 
 }
@@ -374,8 +385,22 @@ int clientWrite(int hashVal, string keyName)
 	}
 
 	server_msg[bytes_received] = '\0';
+
 	printf("Server: %s\n", server_msg);
 
+
+	//checking to see if the server is down
+	const char s[2] = " ";
+	char errNum[5] = "503";
+	char *token = strtok(server_msg, s);
+
+	if(strcmp(errNum, token) == 0)
+	{
+		cout << "Server Unreachable. Returning to Main\n";
+		return -1;
+	}
+	
+	
 	return 1;
 
 }
@@ -472,6 +497,17 @@ int clientInsert(int hashVal, string keyName)
 
 	server_msg[bytes_received] = '\0';
 	printf("Server: %s\n", server_msg);
+	
+	//checking to see if the server is down
+	const char s[2] = " ";
+	char errNum[5] = "503";
+	char *token = strtok(server_msg, s);
+
+	if(strcmp(errNum, token) == 0)
+	{
+		cout << "Server Unreachable. Returning to Main\n";
+		return -1;
+	}
 	
 	return 1;
 
