@@ -225,13 +225,14 @@ int hashFunction(const std::string& obj) {
 
 int clientRead(int hashVal, string keyName)
 {
-      int portArr[7] = {2312, 2313, 2314, 2315, 2316, 2317,2318};
-	string machineName[7] = {"dc01.utdallas.edu", "dc02.utdallas.edu", "dc03.utdallas.edu", "dc04.utdallas.edu", "dc05.utdallas.edu", "dc06.utdallas.edu", "dc07.utdallas.edu"};
+      int portArr[8] = {2312, 2313, 2314, 2315, 2316, 2317,2318, 4000};
+	string machineName[8] = {"dc01.utdallas.edu", "dc02.utdallas.edu", "dc03.utdallas.edu", "dc04.utdallas.edu", "dc05.utdallas.edu", "dc06.utdallas.edu", "dc07.utdallas.edu", "dc03.utdallas.edu"};
      int sockfd, portno, n;
      struct sockaddr_in serv_addr;
      struct hostent *server;
      char buffer[256];
 
+     //change the port arre to hasNum
      portno = (portArr[hashVal]);
      sockfd = socket(AF_INET, SOCK_STREAM, 0);
      if (sockfd < 0) {
@@ -252,6 +253,7 @@ int clientRead(int hashVal, string keyName)
 
      bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
 
+     serv_addr.sin_port = htons(portno);
      if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) 
      {
 	     printf("ERROR connecting");
@@ -259,26 +261,40 @@ int clientRead(int hashVal, string keyName)
      }
 
 
-      if(!handshake_protocol(sockfd))
-      {
-	cout << "Handshake not completed, aborting" << endl;
-      }
-      
-      //creating the variablees needed
-      char request_char[100];	
-      bzero(buffer, 255);
-         
+     //creating the variables needed to send request
+	size_t bytes_received, bytes_sent;
+
+    	char server_msg[MAX_HANDSHAKE_MSG_SIZE];
+        char client_request[MAX_HANDSHAKE_MSG_SIZE] = "r.car.";
+	string value;
+	bzero(buffer, 255);
+    
+   
       //communicating to server
       string request = "read." + keyName + ".NULL";
-      converStringToChar(request_char, request); 	
-      n = write(sockfd, request_char,100);
+
+      converStringToChar(client_request, request); 
+    	bytes_sent = send(sockfd, client_request, strlen(client_request), 0);
+	if (bytes_sent == -1) {
+		perror("send");
+		return false;
+	}
 
 
-      //reading values
-      read(sockfd, buffer, 256);
-      printf(buffer);
+	
+//	Receive acknowledgment from server
+	bytes_received = recv(sockfd, server_msg, sizeof(server_msg), 0);
+	
+	if (bytes_received == -1) {
+		perror("recv");
+		return false;
+	}
 
-      return 1;        
+	server_msg[bytes_received] = '\0';
+	printf("Server: %s\n", server_msg);
+
+
+	return 1;
 
 }
 
@@ -287,9 +303,8 @@ int clientRead(int hashVal, string keyName)
 int clientWrite(int hashVal, string keyName)
 {
 	//arr storying all server names and portnumbers
-      int portArr[7] = {2312, 2313, 2314, 2315, 2316, 2317,2318};
-	string machineName[7] = {"dc01.utdallas.edu", "dc02.utdallas.edu", "dc03.utdallas.edu", "dc04.utdallas.edu", "dc05.utdallas.edu", "dc06.utdallas.edu", "dc07.utdallas.edu"};
-
+    int portArr[8] = {2312, 2313, 2314, 2315, 2316, 2317,2318, 4000};
+	string machineName[8] = {"dc01.utdallas.edu", "dc02.utdallas.edu", "dc03.utdallas.edu", "dc04.utdallas.edu", "dc05.utdallas.edu", "dc06.utdallas.edu", "dc07.utdallas.edu", "dc03.utdallas.edu"};
 
 //	storing the variables needed to create client
      int sockfd, portno, n;
@@ -316,39 +331,53 @@ int clientWrite(int hashVal, string keyName)
      serv_addr.sin_family = AF_INET;
      bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
 
+     serv_addr.sin_port = htons(portno);
      if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) 
      {
 	     printf("ERROR connecting");
 	     return -1;
      }
-	
-	if(!handshake_protocol(sockfd))
-	{
-		cout << "Handshake not completed, returning back to main\n";
-		return -1;	
-	}
 
-      	//creating the variablees needed
-      char request_char[100];
-      string value;
+
+	//creating the variables needed to send request
+	size_t bytes_received, bytes_sent;
+
+    	char server_msg[MAX_HANDSHAKE_MSG_SIZE];
+        char client_request[MAX_HANDSHAKE_MSG_SIZE] = "r.car.";
+	string value;
 	bzero(buffer, 255);
-      
-	//getting the value to insert
-      cout << "Enter value you'd like to replace the old value with: ";
-      cin >> value;
+    
+      	//getting the value to insert
+	cout << "Enter value to be updated: ";
+  	cin >> value;
    
       //communicating to server
       string request = "update." + keyName + "." + value;
-      converStringToChar(request_char, request); 
-  	n = write(sockfd, request_char,100);
 
-	//getting confirmation
-	read(sockfd, buffer, 256);
+      
+      converStringToChar(client_request, request); 
 
-	printf(buffer);
+    	bytes_sent = send(sockfd, client_request, strlen(client_request), 0);
+	if (bytes_sent == -1) {
+		perror("send");
+		return false;
+	}
 
 
-        return 1;
+	
+//	Receive acknowledgment from server
+	bytes_received = recv(sockfd, server_msg, sizeof(server_msg), 0);
+	
+	if (bytes_received == -1) {
+		perror("recv");
+		return false;
+	}
+
+	server_msg[bytes_received] = '\0';
+	printf("Server: %s\n", server_msg);
+
+	return 1;
+
 }
 
 
@@ -358,9 +387,8 @@ int clientInsert(int hashVal, string keyName)
 
 
 	//arr storying all server names and portnumbers
-      int portArr[7] = {2312, 2313, 2314, 2315, 2316, 2317,2318};
-	string machineName[7] = {"dc01.utdallas.edu", "dc02.utdallas.edu", "dc03.utdallas.edu", "dc04.utdallas.edu", "dc05.utdallas.edu", "dc06.utdallas.edu", "dc07.utdallas.edu"};
-
+    int portArr[8] = {2312, 2313, 2314, 2315, 2316, 2317,2318, 4000};
+	string machineName[8] = {"dc01.utdallas.edu", "dc02.utdallas.edu", "dc03.utdallas.edu", "dc04.utdallas.edu", "dc05.utdallas.edu", "dc06.utdallas.edu", "dc07.utdallas.edu", "dc03.utdallas.edu"};
 
 //	storing the variables needed to create client
      int sockfd, portno, n;    
@@ -374,7 +402,7 @@ int clientInsert(int hashVal, string keyName)
 
      if (sockfd < 0) {
 
-	    printf("ERROR opening socket");
+	    printf("ERROR opening socket\n");
 	    return -1;
      }
 
@@ -389,44 +417,66 @@ int clientInsert(int hashVal, string keyName)
      serv_addr.sin_family = AF_INET;
      bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
 
+     serv_addr.sin_port = htons(portno);
      if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) 
      {
-	     printf("ERROR connecting");
+	     printf("ERROR connecting \n");
 	     return -1;
      }
 	
+ 
 
- 	if(!handshake_protocol(sockfd))
-	{
-		cout << "Handshake not completed, returning back to main\n";
-		return -1;	
-	}
+	//creating the variables needed to send request
+	size_t bytes_received, bytes_sent;
 
-      //creating the variablees needed
-      char request_char[100];
-      string value;
+    	char server_msg[MAX_HANDSHAKE_MSG_SIZE];
+        char client_request[MAX_HANDSHAKE_MSG_SIZE] = "r.car.";
+	string value;
 	bzero(buffer, 255);
-      //getting the value to insert
-      cout << "Enter value to be inserted: ";
-      cin >> value;
+    
+      	//getting the value to insert
+	cout << "Enter value to be inserted: ";
+  	cin >> value;
    
       //communicating to server
       string request = "insert." + keyName + "." + value;
 
-      converStringToChar(request_char, request); 
+      
+      converStringToChar(client_request, request); 
 
-  	n = write(sockfd, request_char,100);
+    	bytes_sent = send(sockfd, client_request, strlen(client_request), 0);
 
-	//getting confirmation
-	read(sockfd, buffer, 256);
+	if (bytes_sent == -1) {
 
-	printf(buffer);
+		perror("send");
+
+		return false;
+
+	}
 
 
-        return 1;
+	
+//	Receive acknowledgment from server
+
+	bytes_received = recv(sockfd, server_msg, sizeof(server_msg), 0);
+
+	
+	if (bytes_received == -1) {
+
+
+		perror("recv");
+
+		return false;
+
+	}
+
+	server_msg[bytes_received] = '\0';
+	printf("Server: %s\n", server_msg);
+	
+	return 1;
+
 
 }
-
 
 
 void converStringToChar(char* timeChar, string timeStr){
