@@ -20,12 +20,14 @@
 // NOTE: globals
 
 #define ERROR (-1)
-#define SERVER_STATUS 0 // 0: accepting connections(storing in mem); 1: stopped connection(writing to storage)
+#define SERVER_STATUS // 0: accepting connections; 1: stopped connection
 #define SERVER_PORT 4000
-#define SERVER_IP "127.0.0.1" //"10.176.69.34"
+#define SERVER_IP "10.176.69.34" //"10.176.69.34"
 #define SERVER_BACKLOG 6
 #define THREAD_POOL_SIZE 15
 #define MAX_MSG_SIZE 1024
+#define HEARTBEAT_INTERVAL 10
+#define MAX_SERVERS 6
 
 // hash table for key-value store
 HashTable *hash;
@@ -39,11 +41,15 @@ pthread_mutex_t eventQueue_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t eventQueue_cond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t hash_locks[100]; // Array of locks for each key, assuming maximum 100 keys
 
+// list of known server IPs
+char *known_server_ips[] = {"10.176.69.35", "10.176.69.36", "10.176.69.37", "10.176.69.38", "10.176.69.39", "10.176.69.40"};
+
 // Function prototypes
 int th_key_hs(const char *key);
 void *thread_task(void *arg);
 int check(int exp, const char *msg);
 void handle_client(void *arg);
+bool is_server(const char *ip);
 
 // NOTE: helper funcitons
 
@@ -80,6 +86,7 @@ void *thread_task(void *arg)
     }
 }
 
+// function for handling client's request
 void handle_client(void *arg)
 {
 
@@ -175,6 +182,67 @@ void handle_client(void *arg)
     {
         perror("send");
     }
+
+    printf("\nLOG: Client communication completed.\n");
+}
+
+// Function to check if an IP belongs to any servers
+bool is_server(const char *ip)
+{
+
+    int num_known_server_ips = sizeof(known_server_ips) / sizeof(known_server_ips[0]);
+
+    for (int i = 0; i < num_known_server_ips; ++i)
+    {
+        if (strcmp(ip, known_server_ips[i]) == 0)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+void *heartbeat_thread(void *arg)
+{
+    int server_sock;
+    struct sockaddr_in server_addr;
+
+    // Create socket
+    if ((server_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
+    {
+        perror("socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+
+    // Setup server address
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(SERVER_PORT);
+
+    // Heartbeat message
+    char heartbeat_msg[] = "HEARTBEAT";
+
+    while (true)
+    {
+        // Send heartbeat message to each known server
+        for (int i = 0; i < MAX_SERVERS; ++i)
+        {
+            server_addr.sin_addr.s_addr = inet_addr(known_server_ips[i]);
+
+            // Send heartbeat message
+            if (sendto(server_sock, heartbeat_msg, sizeof(heartbeat_msg), 0, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1)
+            {
+                perror("sendto failed");
+                // Handle send failure
+            }
+        }
+
+        // Sleep for heartbeat interval
+        sleep(HEARTBEAT_INTERVAL);
+    }
+
+    close(server_sock);
+    return NULL;
 }
 
 // function to check the errors
@@ -194,6 +262,14 @@ int main()
     pthread_t th[THREAD_POOL_SIZE];
     pthread_mutex_init(&eventQueue_mutex, NULL);
     pthread_cond_init(&eventQueue_cond, NULL);
+    pthread_t heartbeat_tid;
+
+    // Init thread for sending heartbeats
+    if (pthread_create(&heartbeat_tid, NULL, heartbeat_thread, NULL) != 0)
+    {
+        perror("Failed to create heartbeat thread");
+        exit(EXIT_FAILURE);
+    }
 
     // initialize locks for hash table keys
     for (int i = 0; i < 10; i++)
@@ -216,9 +292,10 @@ int main()
     hashTablePut(hash, "car", "Audi");
     hashTablePut(hash, "movie", "Interstellar");
     hashTablePut(hash, "bike", "Ducati");
+
     // socket creation
-    int server_sock, client_sock, addr_size;
-    SA_IN server_addr, client_addr;
+    int server_sock, net_sock, addr_size;
+    SA_IN server_addr, net_addr;
 
     check((server_sock = socket(AF_INET, SOCK_STREAM, 0)), "Failed to create socket.");
 
@@ -230,36 +307,56 @@ int main()
     check((bind(server_sock, (struct sockaddr *)&server_addr, sizeof(server_addr))), "Failed to bind.");
 
     check((listen(server_sock, SERVER_BACKLOG)), "Listen failed.");
-    
-    char c_addr[INET_ADDRSTRLEN];
 
-    // event loop
+    char n_addr[INET_ADDRSTRLEN]; // to store connection's address
+
+    printf("LOG: Waiting for connections...\n");
+
+    // communication event loop
     while (true)
     {
 
-        printf("Waiting for connections...\n");
         // waiting and accepting connections from the clients
         addr_size = sizeof(SA_IN);
-        check(client_sock =
-                  accept(server_sock, (SA *)&client_addr, (socklen_t *)&addr_size),
+
+        check(net_sock =
+                  accept(server_sock, (SA *)&net_addr, (socklen_t *)&addr_size),
               "Accept failed!");
 
-        inet_ntop(AF_INET, &client_addr.sin_addr, c_addr, INET_ADDRSTRLEN);
-        if (rand() % 2 == 0) // close connection for 50% of incoming clients during disruption
+        inet_ntop(AF_INET, &net_addr.sin_addr, n_addr, INET_ADDRSTRLEN);
+
+        if (is_server(n_addr))
         {
-            printf("Communication channel of client (IP: %s) disrupted.\n", c_addr);
-            char error_message[] = "503 Service Unavailable.";
-            send(client_sock, error_message, strlen(error_message), 0);
-            close(client_sock); // Close the connection immediately
-            continue;           // Skip handling this client
+            // handle server requests.
+            char heartbeat_msg[MAX_MSG_SIZE];
+            ssize_t bytes_received = recv(net_sock, heartbeat_msg, sizeof(heartbeat_msg), 0);
+            if (bytes_received == -1)
+            {
+                perror("recv");
+                close(net_sock);
+            }
+            heartbeat_msg[bytes_received] = '\0';
+            printf("Heartbeat message from server (IP: %s): %s\n", n_addr, heartbeat_msg);
         }
+        else
+        {
+            if (rand() % 2 == 0) // close connection for 50% of incoming clients to simulate disruption
+            {
+                printf("LOG: Communication channel of client (IP: %s) disrupted.\n", n_addr);
+                char error_message[] = "503 Service Unavailable.";
+                send(net_sock, error_message, strlen(error_message), 0);
+                close(net_sock); // Close the connection immediately
+                continue;        // Skip handling this client
+            }
 
-        printf("\nconnected!\n");
+            printf("\nLOG: Client with IP:%s connected!\n", n_addr);
 
-        pthread_mutex_lock(&eventQueue_mutex);
-        enqueue(client_sock);
-        pthread_cond_signal(&eventQueue_cond);
-        pthread_mutex_unlock(&eventQueue_mutex);
+            // enqueue client sock for the thread function to pick
+            pthread_mutex_lock(&eventQueue_mutex);
+            enqueue(net_sock);
+            pthread_cond_signal(&eventQueue_cond);
+            pthread_mutex_unlock(&eventQueue_mutex);
+        }
     }
 
     // joining threads and destroying pthread vars
@@ -271,6 +368,8 @@ int main()
         }
     }
 
+    pthread_join(heartbeat_tid, NULL); // Wait for the heartbeat thread to finish
+
     // destroying mutex and condition vars
     for (int i = 0; i < 100; i++)
     {
@@ -280,5 +379,7 @@ int main()
     pthread_mutex_destroy(&eventQueue_mutex);
     pthread_cond_destroy(&eventQueue_cond);
 
+    // Destroy the hash table
+    destroyHashTable(hash);
     return 0;
 }
