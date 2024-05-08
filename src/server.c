@@ -40,15 +40,15 @@ pthread_cond_t eventQueue_cond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t hash_locks[100]; // Array of locks for each key, assuming maximum 100 keys
 
 // Function prototypes
-int hash_func(const char *key);
+int th_key_hs(const char *key);
 void *thread_task(void *arg);
 int check(int exp, const char *msg);
 void handle_client(void *arg);
 
 // NOTE: helper funcitons
 
-// function to generate a hash value for the given key using the DJB2 algorithm
-int hash_func(const char *key)
+// function to generate a num value for the given key using the DJB2 algorithm
+int th_key_hs(const char *key)
 {
     unsigned long hash = 5381;
     int c;
@@ -114,9 +114,9 @@ void handle_client(void *arg)
             snprintf(response, sizeof(response), "Invalid operation: key is NULL\n");
             break;
         }
-        pthread_mutex_lock(&hash_locks[hash_func(key)]);
+        pthread_mutex_lock(&hash_locks[th_key_hs(key)]);
         char *result = hashTableGet(hash, key);
-        pthread_mutex_unlock(&hash_locks[hash_func(key)]);
+        pthread_mutex_unlock(&hash_locks[th_key_hs(key)]);
 
         if (result != NULL)
         {
@@ -134,7 +134,7 @@ void handle_client(void *arg)
             snprintf(response, sizeof(response), "Invalid operation: key or value is NULL\n");
             break;
         }
-        pthread_mutex_lock(&hash_locks[hash_func(key)]);
+        pthread_mutex_lock(&hash_locks[th_key_hs(key)]);
         if (hashTableGet(hash, key) != NULL)
         {
             snprintf(response, sizeof(response), "Key '%s' already exists, use 'u' to update\n", key);
@@ -144,7 +144,7 @@ void handle_client(void *arg)
             hashTablePut(hash, key, value);
             snprintf(response, sizeof(response), "Value '%s' stored for key '%s'\n", value, key);
         }
-        pthread_mutex_unlock(&hash_locks[hash_func(key)]);
+        pthread_mutex_unlock(&hash_locks[th_key_hs(key)]);
         break;
     case 'u':
     case 'U':
@@ -153,7 +153,7 @@ void handle_client(void *arg)
             snprintf(response, sizeof(response), "Invalid operation: key or value is NULL\n");
             break;
         }
-        pthread_mutex_lock(&hash_locks[hash_func(key)]);
+        pthread_mutex_lock(&hash_locks[th_key_hs(key)]);
         if (hashTableGet(hash, key) != NULL)
         {
             hashTablePut(hash, key, value);
@@ -163,7 +163,7 @@ void handle_client(void *arg)
         {
             snprintf(response, sizeof(response), "Key '%s' not found\n", key);
         }
-        pthread_mutex_unlock(&hash_locks[hash_func(key)]);
+        pthread_mutex_unlock(&hash_locks[th_key_hs(key)]);
         break;
     default:
         snprintf(response, sizeof(response), "Invalid operation\n");
@@ -230,6 +230,8 @@ int main()
     check((bind(server_sock, (struct sockaddr *)&server_addr, sizeof(server_addr))), "Failed to bind.");
 
     check((listen(server_sock, SERVER_BACKLOG)), "Listen failed.");
+    
+    char c_addr[INET_ADDRSTRLEN];
 
     // event loop
     while (true)
@@ -242,9 +244,10 @@ int main()
                   accept(server_sock, (SA *)&client_addr, (socklen_t *)&addr_size),
               "Accept failed!");
 
+        inet_ntop(AF_INET, &client_addr.sin_addr, c_addr, INET_ADDRSTRLEN);
         if (rand() % 2 == 0) // close connection for 50% of incoming clients during disruption
         {
-            printf("Communication disrupt.\n");
+            printf("Communication channel of client (IP: %s) disrupted.\n", c_addr);
             char error_message[] = "503 Service Unavailable.";
             send(client_sock, error_message, strlen(error_message), 0);
             close(client_sock); // Close the connection immediately
