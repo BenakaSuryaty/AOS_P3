@@ -20,16 +20,16 @@
 // NOTE: globals
 
 #define ERROR (-1)
-#define SERVER_STATUS 0       // 0: accepting connections(storing in mem); 1: stopped connection(writing to storage)
-#define SERVER_PORT 4000     
+#define SERVER_STATUS 0 // 0: accepting connections(storing in mem); 1: stopped connection(writing to storage)
+#define SERVER_PORT 4000
 #define SERVER_IP "127.0.0.1" //"10.176.69.34"
 #define SERVER_BACKLOG 6
 #define THREAD_POOL_SIZE 15
 #define MAX_MSG_SIZE 1024
 
 // hash table for key-value store
-
 HashTable *hash;
+
 // struct def to store address info
 typedef struct sockaddr_in SA_IN;
 typedef struct sockaddr SA;
@@ -58,7 +58,7 @@ int hash_func(const char *key)
         hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
     }
 
-    return (int)(hash % 100); // Ensure hash value is within the range of the hash_locks array size and cast to int
+    return (int)(hash % 100); // ensure hash value is within the range of the hash_locks array size and cast to int
 }
 
 // function to execute the given thread id and close the thread once it's done
@@ -74,7 +74,7 @@ void *thread_task(void *arg)
 
         if (pclient != ERROR)
         {
-
+            // handling client connection
             handle_client(&pclient);
         }
     }
@@ -83,10 +83,10 @@ void *thread_task(void *arg)
 void handle_client(void *arg)
 {
 
-    int *connected_client = (int *)arg;  // Cast the argument to int pointer
-    int client_sock = *connected_client; // Dereference the pointer to get the client socket
+    int *connected_client = (int *)arg;  // cast the argument to int pointer
+    int client_sock = *connected_client; // dereference the pointer to get the client socket
 
-    // Handle client request
+    // handle client request
 
     char client_msg[MAX_MSG_SIZE];
     ssize_t bytes_received = recv(client_sock, client_msg, sizeof(client_msg), 0);
@@ -97,13 +97,13 @@ void handle_client(void *arg)
     }
     client_msg[bytes_received] = '\0';
 
-    // Parse client request based on delimiter
+    // parse client request based on delimiter
     char *operation, *key, *value;
     operation = strtok(client_msg, ".");
     key = strtok(NULL, ".");
     value = strtok(NULL, ".");
 
-    // Process client request based on operation
+    // process client request based on operation
     char response[MAX_MSG_SIZE];
     switch (operation[0])
     {
@@ -195,7 +195,7 @@ int main()
     pthread_mutex_init(&eventQueue_mutex, NULL);
     pthread_cond_init(&eventQueue_cond, NULL);
 
-    // Initialize locks for hash table keys
+    // initialize locks for hash table keys
     for (int i = 0; i < 10; i++)
     {
         pthread_mutex_init(&hash_locks[i], NULL);
@@ -209,7 +209,7 @@ int main()
         }
     }
 
-    // Create the hash table
+    // create the hash table
     hash = createHashTable();
 
     // populating the hash table with initial key-value pairs
@@ -241,6 +241,16 @@ int main()
         check(client_sock =
                   accept(server_sock, (SA *)&client_addr, (socklen_t *)&addr_size),
               "Accept failed!");
+
+        if (rand() % 2 == 0) // close connection for 50% of incoming clients during disruption
+        {
+            printf("Communication disrupt.\n");
+            char error_message[] = "503 Service Unavailable.";
+            send(client_sock, error_message, strlen(error_message), 0);
+            close(client_sock); // Close the connection immediately
+            continue;           // Skip handling this client
+        }
+
         printf("\nconnected!\n");
 
         pthread_mutex_lock(&eventQueue_mutex);
